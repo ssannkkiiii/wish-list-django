@@ -59,7 +59,7 @@ class ProductDetailSerializer(serializers.ModelSerializer):
                 'name': cat.name,
             }
 
-class ProductCreateUpdateSerailizer(serializers.ModelSerializer):
+class ProductCreateUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Product
         fields = ['name', 'price', 'image', 'category', 'url']
