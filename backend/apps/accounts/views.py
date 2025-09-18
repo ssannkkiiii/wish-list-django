@@ -13,76 +13,100 @@ from .serializers import (
     ChangePasswordSerializer
 )
 
+
 class RegisterView(generics.CreateAPIView):
     queryset = User.objects.all()
     serializer_class = UserRegisterSerializer
     permission_classes = [permissions.AllowAny]
-    
+
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
-        
+
         refresh = RefreshToken.for_user(user)
-        
-        return Response (
+
+        return Response(
             {
                 'user': UserProfileSerializer(user).data,
                 'refresh': str(refresh),
                 'access': str(refresh.access_token),
                 'message': 'User register successfully'
-            }, status.HTTP_201_CREATED
+            },
+            status=status.HTTP_201_CREATED
         )
 
+
 class LoginView(generics.GenericAPIView):
-    serializer = UserLoginSerializer
+    serializer_class = UserLoginSerializer
     permission_classes = [permissions.AllowAny]
-    
+
     def post(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data)
+        serializer = self.get_serializer(data=request.data, context={'request': request})
         serializer.is_valid(raise_exception=True)
+
         user = serializer.save()
-        
+
         login(request, user)
-        refresh = RefreshToken.for_user()
-        
-        return Response (
+        refresh = RefreshToken.for_user(user)
+        access_token = str(refresh.access_token)
+        refresh_token = str(refresh)
+
+        return Response(
             {
                 'user': UserProfileSerializer(user).data,
-                'refresh': str(refresh),
-                'access': str(refresh.access_token),
+                'refresh': refresh_token,
+                'access': access_token,
                 'message': 'User login successfully'
-            }, status.HTTP_200_OK
+            },
+            status=status.HTTP_200_OK
         )
-        
-        
+
+
 class ProfileView(generics.GenericAPIView):
-    
-    serializer = UserProfileSerializer
+    serializer_class = UserProfileSerializer
     permission_classes = [permissions.IsAuthenticated]
-    
+
     def get_object(self):
         return self.request.user
-    
+
     def get_serializer_class(self):
-        if self.request.method == 'PUT' or self.request.method == 'PATHC':
+        if self.request.method in ('PUT', 'PATCH'):
             return UserUpdateSerializer
         return UserProfileSerializer
-    
-    
+
+
 class ChangePasswordView(generics.GenericAPIView):
-    
-    serializer = ChangePasswordSerializer
+    serializer_class = ChangePasswordSerializer
     permission_classes = [permissions.IsAuthenticated]
-    
+
     def get_object(self):
-        return self.request.user 
-    
+        return self.request.user
+
     def update(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data)
+        serializer = self.get_serializer(data=request.data, context={'request': request})
         serializer.is_valid(raise_exception=True)
         serializer.save()
 
         return Response({
             'message': 'Password changed successfully'
         }, status=status.HTTP_200_OK)
+
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def logout_view(request):
+    try:
+        refresh_token = request.data.get('refresh_token')
+        if refresh_token:
+            token = RefreshToken(refresh_token)
+            token.blacklist()
+        return Response({
+            'message': 'Logout successful!'
+        }, status=status.HTTP_200_OK)
+    except Exception:
+        return Response(
+            {
+                'error': 'Invalid token'
+            }, status=status.HTTP_400_BAD_REQUEST
+        )
