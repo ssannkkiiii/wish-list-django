@@ -5,8 +5,11 @@ from django.urls import reverse
 
 
 class Category(models.Model):
-    slug = models.SlugField(verbose_name='Slug category', unique=True, max_length=100, blank=False, null=True)
-    name = models.CharField(verbose_name='Category name', max_length=10)
+    slug = models.SlugField(verbose_name='Slug category', unique=True, max_length=100, blank=True)
+    name = models.CharField(verbose_name='Category name', max_length=100)
+    description = models.TextField(verbose_name='Category description', blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
     
     class Meta:
         db_table = 'category'
@@ -20,7 +23,7 @@ class Category(models.Model):
     
     def save(self, *args, **kwargs):
         if not self.slug:
-            self.slug == slugify(self.name)
+            self.slug = slugify(self.name)
         super().save(*args, **kwargs)
 
     
@@ -35,25 +38,33 @@ class Product(models.Model):
         Category,
         null=True,
         blank=True, 
-        related_name='posts',
+        related_name='products',
         on_delete=models.SET_NULL
     )
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
-        related_name='posts'
+        related_name='products'
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     
     class Meta:
-        db_table = 'posts'
-        verbose_name = 'Post'
-        verbose_name_plural = 'Posts'
+        db_table = 'products'
+        verbose_name = 'Product'
+        verbose_name_plural = 'Products'
         ordering = ['-created_at']
         
         
     def __str__(self):
-        return self.title
+        return self.name
     
+    def clean(self):
+        from django.core.exceptions import ValidationError
+        if self.price < 0:
+            raise ValidationError({'price': 'Price cannot be negative'})
+    
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
     

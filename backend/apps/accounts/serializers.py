@@ -80,7 +80,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
 
     def get_list_count(self, obj):
         try:
-            return obj.wish.count()
+            return obj.products.count()
         except Exception:
             return 0
 

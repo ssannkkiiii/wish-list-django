@@ -1,8 +1,11 @@
 from rest_framework import status, generics, permissions
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
+from rest_framework.exceptions import ValidationError
 from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.exceptions import TokenError
 from django.contrib.auth import login
+from django.core.exceptions import ValidationError as DjangoValidationError
 
 from .models import User
 from .serializers import (
@@ -20,21 +23,32 @@ class RegisterView(generics.CreateAPIView):
     permission_classes = [permissions.AllowAny]
 
     def create(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        user = serializer.save()
+        try:
+            serializer = self.get_serializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
+            user = serializer.save()
 
-        refresh = RefreshToken.for_user(user)
+            refresh = RefreshToken.for_user(user)
 
-        return Response(
-            {
-                'user': UserProfileSerializer(user).data,
-                'refresh': str(refresh),
-                'access': str(refresh.access_token),
-                'message': 'User register successfully'
-            },
-            status=status.HTTP_201_CREATED
-        )
+            return Response(
+                {
+                    'user': UserProfileSerializer(user).data,
+                    'refresh': str(refresh),
+                    'access': str(refresh.access_token),
+                    'message': 'User registered successfully'
+                },
+                status=status.HTTP_201_CREATED
+            )
+        except ValidationError as e:
+            return Response(
+                {'error': 'Validation failed', 'details': e.detail},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        except Exception as e:
+            return Response(
+                {'error': 'Registration failed', 'details': str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
 
 class LoginView(generics.GenericAPIView):
@@ -42,25 +56,36 @@ class LoginView(generics.GenericAPIView):
     permission_classes = [permissions.AllowAny]
 
     def post(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data, context={'request': request})
-        serializer.is_valid(raise_exception=True)
+        try:
+            serializer = self.get_serializer(data=request.data, context={'request': request})
+            serializer.is_valid(raise_exception=True)
 
-        user = serializer.save()
+            user = serializer.save()
 
-        login(request, user)
-        refresh = RefreshToken.for_user(user)
-        access_token = str(refresh.access_token)
-        refresh_token = str(refresh)
+            login(request, user)
+            refresh = RefreshToken.for_user(user)
+            access_token = str(refresh.access_token)
+            refresh_token = str(refresh)
 
-        return Response(
-            {
-                'user': UserProfileSerializer(user).data,
-                'refresh': refresh_token,
-                'access': access_token,
-                'message': 'User login successfully'
-            },
-            status=status.HTTP_200_OK
-        )
+            return Response(
+                {
+                    'user': UserProfileSerializer(user).data,
+                    'refresh': refresh_token,
+                    'access': access_token,
+                    'message': 'User logged in successfully'
+                },
+                status=status.HTTP_200_OK
+            )
+        except ValidationError as e:
+            return Response(
+                {'error': 'Authentication failed', 'details': e.detail},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+        except Exception as e:
+            return Response(
+                {'error': 'Login failed', 'details': str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
 
 class ProfileView(generics.GenericAPIView):
@@ -98,15 +123,25 @@ class ChangePasswordView(generics.GenericAPIView):
 def logout_view(request):
     try:
         refresh_token = request.data.get('refresh_token')
-        if refresh_token:
-            token = RefreshToken(refresh_token)
-            token.blacklist()
+        if not refresh_token:
+            return Response(
+                {'error': 'Refresh token is required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        token = RefreshToken(refresh_token)
+        token.blacklist()
+        
         return Response({
             'message': 'Logout successful!'
         }, status=status.HTTP_200_OK)
-    except Exception:
+    except TokenError:
         return Response(
-            {
-                'error': 'Invalid token'
-            }, status=status.HTTP_400_BAD_REQUEST
+            {'error': 'Invalid refresh token'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    except Exception as e:
+        return Response(
+            {'error': 'Logout failed', 'details': str(e)},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
